@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
   <head>
@@ -7,8 +8,6 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Add Babel for in-browser JSX transformation -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <!-- Add Algolia Search Client -->
-    <script src="https://cdn.jsdelivr.net/npm/algoliasearch@4/dist/algoliasearch-lite.umd.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Naskh+Arabic:wght@400;700&display=swap" rel="stylesheet">
@@ -39,10 +38,7 @@
 {
   "imports": {
     "react": "https://esm.sh/react@18.2.0",
-    "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
-    "react/": "https://aistudiocdn.com/react@^19.2.0/",
-    "algoliasearch/": "https://aistudiocdn.com/algoliasearch@^5.43.0/"
+    "react-dom/client": "https://esm.sh/react-dom@18.2.0/client"
   }
 }
 </script>
@@ -52,22 +48,38 @@
     <script type="text/babel" data-type="module">
 // --- Start of combined script ---
 
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import ReactDOM from 'react-dom/client';
 
+// --- Helper Functions ---
+const normalizeFatwa = (item) => {
+  const newItem = { ...item };
+  // 1. Unify the answer key
+  if (newItem.text && !newItem.answer) {
+    newItem.answer = newItem.text;
+    delete newItem.text;
+  }
+
+  // 2. Extract the primary ID from the source field
+  if (newItem.source) {
+    const match = newItem.source.match(/fatwa_(\d+)\.html/);
+    if (match && match[1]) {
+      newItem.id = match[1]; 
+    }
+  } else if (newItem.id) {
+    newItem.id = String(newItem.id);
+  }
+  return newItem;
+};
+
+
 // --- Constants ---
-const ALGOLIA_APP_ID = '3XD12I7386';
-const ALGOLIA_SEARCH_ONLY_KEY = '89e8e132a05fdb02275f64dec8d14d05';
-const ALGOLIA_INDEX_NAME = 'fatawa';
-const FATWA_BASE_URL = 'https://islamfatawa.github.io/fatwa/html_pages/';
+const API_BASE_URL = 'https://g85b062bd5c6cb1-fatwaproject.adb.me-dubai-1.oraclecloudapps.com/ords/SUFEAN/fatwas/search/';
+const API_ID_LOOKUP_BASE_URL = 'https://g85b062bd5c6cb1-fatwaproject.adb.me-dubai-1.oraclecloudapps.com/ords/SUFEAN/fatwas/search_source/';
 const RANDOM_SEARCH_TERMS = ['الصلاة', 'الزكاة', 'الحج', 'الصوم', 'الطلاق', 'الزواج'];
 
-// --- Algolia Client ---
-const algoliaClient = algoliasearch(ALGOLIA_APP_ID, ALGOLIA_SEARCH_ONLY_KEY);
-const algoliaIndex = algoliaClient.initIndex(ALGOLIA_INDEX_NAME);
-
-
 // --- Icon Components ---
+
 const SearchIcon = ({ className }) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -130,7 +142,7 @@ const CheckIcon = ({ className }) => (
 );
 
 
-// --- Other Components ---
+// --- UI Components ---
 
 const LoadingSpinner = () => (
   <div className="flex justify-center items-center p-8">
@@ -149,25 +161,31 @@ const SearchInput = ({ onSearch, isLoading }) => {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="w-full max-w-2xl mx-auto my-8">
-      <div className="relative">
-        <input
-          type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="ابحث عن فتوى..."
-          className="w-full py-3 pl-16 pr-5 text-lg text-gray-700 bg-white border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-600"
-          disabled={isLoading}
-        />
-        <button
-          type="submit"
-          className="absolute inset-y-0 left-0 flex items-center justify-center w-14 h-full text-white bg-emerald-600 rounded-r-none rounded-l-full hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-emerald-400"
-          disabled={isLoading}
-        >
-          <SearchIcon className="w-6 h-6" />
-        </button>
-      </div>
-    </form>
+    <div className="w-full max-w-2xl mx-auto my-8">
+      <form onSubmit={handleSubmit}>
+        <div className="flex items-center">
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="ابحث عن فتوى أو أدخل رقمها..."
+            className="w-full px-5 py-3 text-lg text-gray-700 bg-white border border-gray-300 rounded-r-full rounded-l-none focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-600"
+            disabled={isLoading}
+          />
+          <button
+            type="submit"
+            className="flex items-center justify-center w-14 h-full px-4 py-3 text-white bg-emerald-600 rounded-l-full rounded-r-none hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-emerald-400"
+            style={{height: '50px'}}
+            disabled={isLoading}
+          >
+            <SearchIcon className="w-6 h-6" />
+          </button>
+        </div>
+      </form>
+      <p className="text-center text-sm text-gray-500 dark:text-gray-400 mt-3">
+        يمكنك البحث بالكلمات أو إدخال رقم الفتوى مباشرة.
+      </p>
+    </div>
   );
 };
 
@@ -177,10 +195,8 @@ const FatwaListItem = ({ fatwa, onSelect }) => {
       onClick={() => onSelect(fatwa)}
       className="py-5 cursor-pointer group"
     >
-      <h3 
-        className="text-xl font-semibold text-gray-800 dark:text-gray-100 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors duration-200 line-clamp-2"
-        dangerouslySetInnerHTML={{ __html: fatwa.question }}
-      >
+      <h3 className="text-xl font-semibold text-gray-800 dark:text-gray-100 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors duration-200 line-clamp-2">
+        {fatwa.question}
       </h3>
       <span className="text-md text-emerald-600 dark:text-emerald-400 mt-1 inline-block">
         ... أكمل القراءة
@@ -214,7 +230,6 @@ const FatwaList = ({ fatwas, onFatwaSelect, title }) => {
 
 
 const FatwaDetail = ({ fatwa, onIdClick, onBack, relatedFatwas, onRelatedFatwaSelect }) => {
-  const answerRef = useRef(null);
   const [fontLevel, setFontLevel] = useState(() => {
     const savedLevel = localStorage.getItem('fatwaFontLevel');
     return savedLevel ? parseInt(savedLevel, 10) : 1; // 0: small, 1: medium, 2: large
@@ -231,17 +246,9 @@ const FatwaDetail = ({ fatwa, onIdClick, onBack, relatedFatwas, onRelatedFatwaSe
     setFontLevel(newLevel);
     localStorage.setItem('fatwaFontLevel', newLevel.toString());
   };
-  
-  const getCleanTextForCopy = (html) => {
-      const tempDiv = document.createElement('div');
-      tempDiv.innerHTML = html;
-      return tempDiv.textContent || tempDiv.innerText || '';
-  }
 
   const handleCopy = () => {
-    const questionText = getCleanTextForCopy(fatwa.question);
-    const answerText = getCleanTextForCopy(fatwa.answer);
-    const textToCopy = `السؤال: ${questionText}\n\nالجواب: ${answerText}\n\nالمصدر: ${fatwa.source}`;
+    const textToCopy = `السؤال: ${fatwa.question}\n\nالجواب: ${fatwa.answer}\n\nالمصدر: ${fatwa.source}`;
     navigator.clipboard.writeText(textToCopy).then(() => {
         setCopyStatus('copied');
         setTimeout(() => setCopyStatus('idle'), 2000);
@@ -251,70 +258,59 @@ const FatwaDetail = ({ fatwa, onIdClick, onBack, relatedFatwas, onRelatedFatwaSe
   };
 
   const handleShare = () => {
-    const questionText = getCleanTextForCopy(fatwa.question);
-    const answerText = getCleanTextForCopy(fatwa.answer);
     if (navigator.share) {
         navigator.share({
-            title: `فتوى: ${questionText}`,
-            text: `السؤال: ${questionText}\n\nالجواب: ${answerText}\n\nالمصدر: ${fatwa.source}`,
+            title: `فتوى: ${fatwa.question}`,
+            text: `السؤال: ${fatwa.question}\n\nالجواب: ${fatwa.answer}`,
             url: window.location.href,
         }).catch(error => console.log('Error sharing', error));
     } else {
         handleCopy();
-        alert('تم نسخ الفتوى إلى الحافظة لمشاركتها.');
     }
-  };
-
-  const linkifyAnswerHTML = (html) => {
-    if (typeof html !== 'string' || !html.trim()) {
-        return '<span class="text-gray-500 italic">لا يتوفر جواب لهذه الفتوى حالياً.</span>';
-    }
-    const regex = /(\[\d+\]|\b\d{3,}\b)/g;
-    return html.replace(regex, (match) => {
-        const numberString = match.replace(/\D/g, '');
-        const fatwaId = parseInt(numberString, 10);
-        if (!isNaN(fatwaId)) {
-            return `<a href="#/fatwa/${fatwaId}" data-fatwa-id="${fatwaId}" class="text-emerald-600 dark:text-emerald-400 font-bold hover:underline mx-1">${match}</a>`;
-        }
-        return match;
-    });
   };
   
-  const processedAnswerHtml = useMemo(() => linkifyAnswerHTML(fatwa.answer), [fatwa.answer]);
+  const parseAndLinkAnswer = (text) => {
+    if (typeof text !== 'string' || !text.trim()) {
+        return <span className="text-gray-500 italic">لا يتوفر جواب لهذه الفتوى حالياً.</span>;
+    }
 
-  useEffect(() => {
-    const container = answerRef.current;
-    if (!container) return;
+    const regex = /(\[\d+\]|\b\d{3,}\b)/g;
+    const parts = text.split(regex);
 
-    const handleClick = (event) => {
-        const target = event.target;
-        const link = target.closest('a[data-fatwa-id]');
-        if (link) {
-            event.preventDefault();
-            const fatwaId = link.getAttribute('data-fatwa-id');
-            if (fatwaId) {
-                // The actual navigation is handled by the hash change listener in App
-                // This just updates the hash
-                window.location.hash = `#/fatwa/${fatwaId}`;
-            }
+    return parts.map((part, index) => {
+      if (index % 2 === 1) {
+        const fatwaId = part.replace(/\D/g, ''); 
+        if (fatwaId) {
+          return (
+            <a
+              key={index}
+              href={`#/fatwa/${fatwaId}`}
+              onClick={(e) => {
+                e.preventDefault();
+                onIdClick(fatwaId);
+              }}
+              className="text-emerald-600 dark:text-emerald-400 font-bold hover:underline mx-1"
+            >
+              {part}
+            </a>
+          );
         }
-    };
-    
-    container.addEventListener('click', handleClick);
-    return () => {
-        if (container) {
-          container.removeEventListener('click', handleClick);
-        }
-    };
-  }, [processedAnswerHtml]);
-
+      }
+      return part.split('\n').map((line, i) => (
+        <React.Fragment key={`${index}-${i}`}>
+            {line}
+            {i < part.split('\n').length - 1 && <br/>}
+        </React.Fragment>
+      ));
+    });
+  };
 
   return (
     <div className="w-full max-w-4xl mx-auto flex flex-col gap-8">
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-8 animate-fade-in">
           <div className="flex justify-between items-center mb-6 flex-wrap gap-4">
             <button onClick={onBack} className="px-4 py-2 bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors">
-                &rarr; العودة للنتائج
+                &rarr; عودة
             </button>
             <div className="flex items-center gap-2">
                 <div className="flex items-center border border-gray-300 dark:border-gray-600 rounded-md">
@@ -334,15 +330,13 @@ const FatwaDetail = ({ fatwa, onIdClick, onBack, relatedFatwas, onRelatedFatwaSe
           </div>
         <div className="border-b-2 border-emerald-500 pb-4 mb-4">
           <p className="text-md text-emerald-600 dark:text-emerald-400 font-bold">معرف الفتوى: {fatwa.id}</p>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mt-2" dangerouslySetInnerHTML={{ __html: fatwa.question }}></h1>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mt-2">{fatwa.question}</h1>
         </div>
         <div className="max-w-none text-gray-700 dark:text-gray-300">
           <h2 className="text-xl font-bold text-gray-800 dark:text-gray-200 mb-2">الجواب:</h2>
-          <div 
-            ref={answerRef}
-            className={`whitespace-pre-wrap ${fontClasses[fontLevel]} ${lineHeights[fontLevel]}`}
-            dangerouslySetInnerHTML={{ __html: processedAnswerHtml }}
-          />
+          <div className={`whitespace-pre-wrap ${fontClasses[fontLevel]} ${lineHeights[fontLevel]}`}>
+            {parseAndLinkAnswer(fatwa.answer)}
+          </div>
         </div>
         <div className="mt-8 pt-4 border-t border-gray-200 dark:border-gray-700">
           <p className="text-sm text-gray-500 dark:text-gray-400">
@@ -361,9 +355,8 @@ const FatwaDetail = ({ fatwa, onIdClick, onBack, relatedFatwas, onRelatedFatwaSe
                 onClick={() => onRelatedFatwaSelect(relatedFatwa)}
                 className="py-3 cursor-pointer group"
               >
-                <p className="text-lg text-gray-700 dark:text-gray-300 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors duration-200 line-clamp-2"
-                 dangerouslySetInnerHTML={{ __html: relatedFatwa.question }}
-                >
+                <p className="text-lg text-gray-700 dark:text-gray-300 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors duration-200 line-clamp-2">
+                  {relatedFatwa.question}
                 </p>
               </li>
             ))}
@@ -404,8 +397,8 @@ const FeaturedQuestions = ({ fatwas, onQuestionClick }) => {
       <p className="text-gray-600 dark:text-gray-400 mb-2 font-semibold">سؤال مميز</p>
       <h3 
         className={`text-xl font-bold text-emerald-800 dark:text-emerald-300 transition-opacity duration-500 h-14 line-clamp-2 ${isFading ? 'opacity-0' : 'opacity-100'}`}
-        dangerouslySetInnerHTML={{ __html: currentFatwa?.question }}
       >
+        {currentFatwa?.question}
       </h3>
     </div>
   );
@@ -423,25 +416,19 @@ const ThemeToggle = ({ theme, toggleTheme }) => {
   );
 };
 
-
 // --- Main App Component ---
-
 const App = () => {
   const [fatwas, setFatwas] = useState([]);
   const [selectedFatwa, setSelectedFatwa] = useState(null);
   const [relatedFatwas, setRelatedFatwas] = useState([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [listTitle, setListTitle] = useState('فتاوى مختارة');
+  const [location, setLocation] = useState(window.location.hash);
   const [theme, setTheme] = useState(() => {
     const savedTheme = localStorage.getItem('theme');
-    if (savedTheme) {
-      return savedTheme;
-    }
-    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      return 'dark';
-    }
-    return 'light';
+    if (savedTheme) return savedTheme;
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   });
 
   useEffect(() => {
@@ -457,38 +444,13 @@ const App = () => {
     setTheme(prevTheme => prevTheme === 'light' ? 'dark' : 'light');
   };
 
-  const fetchFatwaDetails = useCallback(async (id) => {
-    const response = await fetch(`${FATWA_BASE_URL}fatwa_${id}.html`);
-    if (!response.ok) {
-      throw new Error(`تعذر العثور على الفتوى رقم ${id}.`);
-    }
-    const htmlText = await response.text();
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(htmlText, 'text/html');
-
-    const question = doc.getElementById('q')?.innerHTML.trim() || 'لم يتم العثور على السؤال';
-    const answer = doc.getElementById('a')?.innerHTML.trim() || 'لم يتم العثور على الجواب';
-    
-    return {
-      id: id,
-      question: question,
-      answer: answer,
-      source: `fatwa_${id}.html`
-    };
-  }, []);
-
   const fetchRelatedFatwas = useCallback(async (fatwa) => {
     if (!fatwa.question || fatwa.question.trim().length === 0) {
         setRelatedFatwas([]);
         return;
     }
-    
-    const tempDiv = document.createElement('div');
-    tempDiv.innerHTML = fatwa.question;
-    const questionText = tempDiv.textContent || tempDiv.innerText || '';
-
-    const keywords = questionText.split(' ').filter(word => word.length > 3).slice(0, 4).join(' ');
-    const query = keywords || questionText.split(' ')[0];
+    const keywords = fatwa.question.split(' ').filter(word => word.length > 3);
+    const query = keywords.length > 0 ? keywords[0] : fatwa.question.split(' ')[0];
 
     if (!query) {
         setRelatedFatwas([]);
@@ -496,16 +458,10 @@ const App = () => {
     }
     
     try {
-        const { hits } = await algoliaIndex.search(query, { hitsPerPage: 6 });
-        const filteredItems = hits
-            .map(hit => ({
-                id: parseInt(hit.objectID, 10),
-                question: hit.question,
-                answer: '',
-                source: `fatwa_${hit.objectID}.html`,
-            }))
-            .filter(item => item.id !== fatwa.id)
-            .slice(0, 5);
+        const response = await fetch(`${API_BASE_URL}${encodeURIComponent(query)}`);
+        const data = await response.json();
+        const items = (data.items || []).map(normalizeFatwa); 
+        const filteredItems = items.filter(item => item.id !== fatwa.id).slice(0, 5);
         setRelatedFatwas(filteredItems);
     } catch (err) {
         console.error("Failed to fetch related fatwas:", err);
@@ -513,111 +469,114 @@ const App = () => {
     }
   }, []);
 
-  const searchFatwas = useCallback(async (query) => {
+  const fetchFatwaById = useCallback(async (id) => {
     setIsLoading(true);
     setError(null);
-    setSelectedFatwa(null);
     setRelatedFatwas([]);
     
     try {
-        const { hits } = await algoliaIndex.search(query);
-        const results = hits.map(hit => ({
-            id: parseInt(hit.objectID, 10),
-            question: hit.question,
-            answer: '', // Will be fetched on demand
-            source: `fatwa_${hit.objectID}.html`,
-        }));
-        setFatwas(results);
+        const directLookupUrl = `${API_ID_LOOKUP_BASE_URL}${id}`;
+        const response = await fetch(directLookupUrl);
+        if (!response.ok) {
+            throw new Error(`لم يتم العثور على فتوى بالمعرف المحدد (${id}).`);
+        }
+
+        const data = await response.json();
+        const rawItems = data.items || [];
+        
+        if (rawItems.length > 0) {
+            const foundFatwa = normalizeFatwa(rawItems[0]); 
+            setSelectedFatwa(foundFatwa);
+            await fetchRelatedFatwas(foundFatwa);
+        } else {
+             throw new Error(`لم يتم العثور على فتوى بالمعرف المحدد (${id}).`);
+        }
+
     } catch (err) {
-        setError('حدث خطأ أثناء البحث.');
+        setError(err.message);
+        setSelectedFatwa(null);
+    } finally {
+        setIsLoading(false);
+    }
+  }, [fetchRelatedFatwas]);
+
+  const fetchFatwasByQuery = useCallback(async (query) => {
+    setIsLoading(true);
+    setError(null);
+    // setSelectedFatwa(null); // This is now handled by the router effect
+    setRelatedFatwas([]);
+    try {
+        const response = await fetch(`${API_BASE_URL}${encodeURIComponent(query)}`);
+        if (!response.ok) throw new Error('فشل في جلب البيانات');
+        const data = await response.json();
+        const combinedItems = (data.items || []).map(normalizeFatwa);
+        const uniqueItems = Array.from(new Map(combinedItems.map(item => [item.id, item])).values());
+        setFatwas(uniqueItems);
+    } catch (err) {
+        setError(err.message);
         setFatwas([]);
     } finally {
         setIsLoading(false);
     }
   }, []);
 
-  const viewFatwaById = useCallback(async (id) => {
-    if (selectedFatwa?.id === id && !error) return;
-    
-    setIsLoading(true);
-    setError(null);
-    
-    try {
-        const fullFatwa = await fetchFatwaDetails(id);
-        setSelectedFatwa(fullFatwa);
-        fetchRelatedFatwas(fullFatwa);
-    } catch(err) {
-        setError(err.message);
-        setSelectedFatwa(null);
-    } finally {
-        setIsLoading(false);
-        window.scrollTo(0, 0);
-    }
-  }, [fetchFatwaDetails, fetchRelatedFatwas, selectedFatwa?.id, error]);
+  // --- Robust Hash-based Routing ---
 
-  // Effect for handling hash-based routing
+  // Listen for hash changes to sync state
   useEffect(() => {
     const handleHashChange = () => {
-        const hash = window.location.hash;
-        if (hash.startsWith('#/fatwa/')) {
-            const idString = hash.substring('#/fatwa/'.length);
-            const id = parseInt(idString, 10);
-            if (!isNaN(id)) {
-                viewFatwaById(id);
-            } else {
-                window.location.hash = '#/'; // Go to home for invalid ID
-            }
-        } else { // Hash is empty or something else, show list view
-            // When navigating back to list view, clear the selected fatwa
-            if (selectedFatwa) {
-              setSelectedFatwa(null);
-              setRelatedFatwas([]);
-            }
-        }
+      setLocation(window.location.hash);
     };
-
     window.addEventListener('hashchange', handleHashChange);
-    handleHashChange(); // Check hash on initial load
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
 
-    return () => {
-        window.removeEventListener('hashchange', handleHashChange);
-    };
-  }, [viewFatwaById, selectedFatwa]);
-  
-  // Effect for loading initial questions
+  // React to location state changes to fetch data and update UI
   useEffect(() => {
-    // Only run this if we are on the main page (no fatwa ID in hash) and we don't have fatwas yet.
-    if ((!window.location.hash || window.location.hash === '#/') && fatwas.length === 0) {
-        setIsLoading(true);
-        setListTitle('فتاوى مختارة');
-        const randomTerm = RANDOM_SEARCH_TERMS[Math.floor(Math.random() * RANDOM_SEARCH_TERMS.length)];
-        searchFatwas(randomTerm);
-    }
-  }, [fatwas.length, searchFatwas]);
+    const hash = location.substring(1); // remove '#'
+    const pathParts = hash.split("/").filter(p => p);
 
-  const handleSearch = (query) => {
-    const potentialId = parseInt(query.trim(), 10);
-    if (/^\d+$/.test(query.trim()) && !isNaN(potentialId)) {
-        window.location.hash = `#/fatwa/${potentialId}`;
+    window.scrollTo(0, 0);
+
+    if (pathParts[0] === 'fatwa' && pathParts[1]) {
+      const id = pathParts[1].replace(/\D/g, "");
+      if (id) {
+          fetchFatwaById(id);
+      }
+    } else if (pathParts[0] === 'search' && pathParts[1]) {
+      const query = decodeURIComponent(pathParts[1]);
+      setSelectedFatwa(null);
+      setListTitle(`نتائج البحث عن: "${query}"`);
+      fetchFatwasByQuery(query);
     } else {
-        setListTitle(`نتائج البحث عن: "${query}"`);
-        if (window.location.hash && window.location.hash !== '#/') {
-            window.location.hash = '#/';
-        }
-        searchFatwas(query);
+      // Home page / initial state
+      const randomTerm = RANDOM_SEARCH_TERMS[Math.floor(Math.random() * RANDOM_SEARCH_TERMS.length)];
+      setSelectedFatwa(null);
+      setListTitle('فتاوى مختارة');
+      fetchFatwasByQuery(randomTerm);
+    }
+  }, [location, fetchFatwaById, fetchFatwasByQuery]);
+
+
+  // --- Event Handlers ---
+  const handleSearch = (query) => {
+    if (/^\d+$/.test(query)) {
+      window.location.hash = `#/fatwa/${query}`;
+    } else {
+      window.location.hash = `#/search/${encodeURIComponent(query)}`;
     }
   };
 
-  const navigateToFatwa = useCallback((fatwa) => {
+  const handleFatwaSelect = (fatwa) => {
     window.location.hash = `#/fatwa/${fatwa.id}`;
-  }, []);
+  };
   
-  const navigateToFatwaById = useCallback((id) => {
+  const handleIdClick = (id) => {
     window.location.hash = `#/fatwa/${id}`;
-  }, []);
+  };
 
   const handleBackToList = () => {
-    window.location.hash = '#/';
+    window.history.back();
   };
 
   return (
@@ -627,7 +586,10 @@ const App = () => {
             <ThemeToggle theme={theme} toggleTheme={toggleTheme} />
         </div>
         <header className="text-center mb-8">
-            <div className="flex justify-center items-center gap-4 text-emerald-600 dark:text-emerald-400">
+            <div 
+              className="flex justify-center items-center gap-4 text-emerald-600 dark:text-emerald-400 cursor-pointer"
+              onClick={() => window.location.hash = '#/'}
+            >
                 <BookIcon className="w-12 h-12"/>
                 <h1 className="text-5xl font-bold">موسوعة الفتاوى</h1>
             </div>
@@ -636,11 +598,11 @@ const App = () => {
             </p>
         </header>
 
-        {!selectedFatwa && fatwas.length > 0 && <FeaturedQuestions fatwas={fatwas} onQuestionClick={navigateToFatwa} />}
+        {!selectedFatwa && <FeaturedQuestions fatwas={fatwas} onQuestionClick={handleFatwaSelect} />}
         
         <SearchInput onSearch={handleSearch} isLoading={isLoading} />
         
-        {error && <div className="text-center text-red-500 bg-red-100 dark:bg-red-900 dark:text-red-300 p-4 rounded-md my-4 whitespace-pre-wrap">{error}</div>}
+        {error && <div className="text-center text-red-500 bg-red-100 dark:bg-red-900 dark:text-red-300 p-4 rounded-md my-4">{error}</div>}
         
         <div className="mt-10">
             {isLoading ? (
@@ -648,13 +610,13 @@ const App = () => {
             ) : selectedFatwa ? (
                 <FatwaDetail 
                   fatwa={selectedFatwa} 
-                  onIdClick={navigateToFatwaById} 
+                  onIdClick={handleIdClick} 
                   onBack={handleBackToList}
                   relatedFatwas={relatedFatwas}
-                  onRelatedFatwaSelect={navigateToFatwa}
+                  onRelatedFatwaSelect={handleFatwaSelect}
                 />
             ) : (
-                <FatwaList fatwas={fatwas} onFatwaSelect={navigateToFatwa} title={listTitle} />
+                <FatwaList fatwas={fatwas} onFatwaSelect={handleFatwaSelect} title={listTitle} />
             )}
         </div>
       </main>
@@ -662,9 +624,7 @@ const App = () => {
   );
 };
 
-
-// --- App Mount ---
-
+// --- Render App ---
 const rootElement = document.getElementById('root');
 const root = ReactDOM.createRoot(rootElement);
 root.render(
