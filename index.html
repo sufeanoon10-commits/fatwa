@@ -6,6 +6,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>موسوعة الفتاوى</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Add Algolia Search Client -->
+    <script src="https://cdn.jsdelivr.net/npm/algoliasearch@4/dist/algoliasearch-lite.umd.js"></script>
     <!-- Add Babel for in-browser JSX transformation -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -51,32 +53,26 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import ReactDOM from 'react-dom/client';
 
-// --- Helper Functions ---
-const normalizeFatwa = (item) => {
-  const newItem = { ...item };
-  // 1. Unify the answer key
-  if (newItem.text && !newItem.answer) {
-    newItem.answer = newItem.text;
-    delete newItem.text;
-  }
-
-  // 2. Extract the primary ID from the source field
-  if (newItem.source) {
-    const match = newItem.source.match(/fatwa_(\d+)\.html/);
-    if (match && match[1]) {
-      newItem.id = match[1]; 
-    }
-  } else if (newItem.id) {
-    newItem.id = String(newItem.id);
-  }
-  return newItem;
-};
-
-
 // --- Constants ---
-const API_BASE_URL = 'https://g85b062bd5c6cb1-fatwaproject.adb.me-dubai-1.oraclecloudapps.com/ords/SUFEAN/fatwas/search/';
-const API_ID_LOOKUP_BASE_URL = 'https://g85b062bd5c6cb1-fatwaproject.adb.me-dubai-1.oraclecloudapps.com/ords/SUFEAN/fatwas/search_source/';
+const ALGOLIA_APP_ID = '3XD12I7386';
+const ALGOLIA_SEARCH_KEY = '89e8e132a05fdb02275f64dec8d14d05';
+const ALGOLIA_INDEX_NAME = 'fatawa';
+const FATWA_PAGE_BASE_URL = 'https://islamfatawa.github.io/fatwa/html_pages/fatwa_';
 const RANDOM_SEARCH_TERMS = ['الصلاة', 'الزكاة', 'الحج', 'الصوم', 'الطلاق', 'الزواج'];
+
+// Initialize Algolia client
+const searchClient = algoliasearch(ALGOLIA_APP_ID, ALGOLIA_SEARCH_KEY);
+const index = searchClient.initIndex(ALGOLIA_INDEX_NAME);
+
+// --- Helper Functions ---
+const normalizeFatwa = (hit) => {
+  return {
+    id: hit.objectID,
+    question: hit.question,
+    answer: hit.text, // Assuming the answer field is 'text' in Algolia
+    source: `${FATWA_PAGE_BASE_URL}${hit.objectID}.html`
+  };
+};
 
 // --- Icon Components ---
 
@@ -339,9 +335,12 @@ const FatwaDetail = ({ fatwa, onIdClick, onBack, relatedFatwas, onRelatedFatwaSe
           </div>
         </div>
         <div className="mt-8 pt-4 border-t border-gray-200 dark:border-gray-700">
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            <span className="font-semibold">المصدر:</span> {fatwa.source}
-          </p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+                <span className="font-semibold">المصدر:</span> 
+                <a href={fatwa.source} target="_blank" rel="noopener noreferrer" className="text-emerald-600 hover:underline dark:text-emerald-400 mr-2">
+                    {fatwa.source}
+                </a>
+            </p>
         </div>
       </div>
       
@@ -450,7 +449,7 @@ const App = () => {
         return;
     }
     const keywords = fatwa.question.split(' ').filter(word => word.length > 3);
-    const query = keywords.length > 0 ? keywords[0] : fatwa.question.split(' ')[0];
+    const query = keywords.length > 0 ? keywords.slice(0, 3).join(' ') : fatwa.question.split(' ').slice(0, 3).join(' ');
 
     if (!query) {
         setRelatedFatwas([]);
@@ -458,9 +457,8 @@ const App = () => {
     }
     
     try {
-        const response = await fetch(`${API_BASE_URL}${encodeURIComponent(query)}`);
-        const data = await response.json();
-        const items = (data.items || []).map(normalizeFatwa); 
+        const { hits } = await index.search(query, { hitsPerPage: 6 });
+        const items = hits.map(normalizeFatwa);
         const filteredItems = items.filter(item => item.id !== fatwa.id).slice(0, 5);
         setRelatedFatwas(filteredItems);
     } catch (err) {
@@ -475,25 +473,16 @@ const App = () => {
     setRelatedFatwas([]);
     
     try {
-        const directLookupUrl = `${API_ID_LOOKUP_BASE_URL}${id}`;
-        const response = await fetch(directLookupUrl);
-        if (!response.ok) {
-            throw new Error(`لم يتم العثور على فتوى بالمعرف المحدد (${id}).`);
-        }
-
-        const data = await response.json();
-        const rawItems = data.items || [];
-        
-        if (rawItems.length > 0) {
-            const foundFatwa = normalizeFatwa(rawItems[0]); 
+        const fatwa = await index.getObject(id);
+        if (fatwa) {
+            const foundFatwa = normalizeFatwa({ ...fatwa, objectID: id });
             setSelectedFatwa(foundFatwa);
             await fetchRelatedFatwas(foundFatwa);
         } else {
-             throw new Error(`لم يتم العثور على فتوى بالمعرف المحدد (${id}).`);
+            throw new Error(`لم يتم العثور على فتوى بالمعرف المحدد (${id}).`);
         }
-
     } catch (err) {
-        setError(err.message);
+        setError(`حدث خطأ أثناء جلب الفتوى: ${err.message}`);
         setSelectedFatwa(null);
     } finally {
         setIsLoading(false);
@@ -503,14 +492,10 @@ const App = () => {
   const fetchFatwasByQuery = useCallback(async (query) => {
     setIsLoading(true);
     setError(null);
-    // setSelectedFatwa(null); // This is now handled by the router effect
     setRelatedFatwas([]);
     try {
-        const response = await fetch(`${API_BASE_URL}${encodeURIComponent(query)}`);
-        if (!response.ok) throw new Error('فشل في جلب البيانات');
-        const data = await response.json();
-        const combinedItems = (data.items || []).map(normalizeFatwa);
-        const uniqueItems = Array.from(new Map(combinedItems.map(item => [item.id, item])).values());
+        const { hits } = await index.search(query);
+        const uniqueItems = hits.map(normalizeFatwa);
         setFatwas(uniqueItems);
     } catch (err) {
         setError(err.message);
